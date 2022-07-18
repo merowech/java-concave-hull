@@ -1,14 +1,17 @@
 package main.clustering;
 
-import javafx.util.Pair;
-
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.List;
+import java.util.TreeSet;
 
 /**
- * ConcaveHull.java - 14/10/16
+ * ConcaveHull.java - 18/07/22
  *
- * @author Udo Schlegel - Udo.3.Schlegel(at)uni-konstanz.de
- * @version 1.0
+ * @author Udo Schlegel - Udo.3.Schlegel(at)uni-konstanz.de, rksh
+ * @version 1.1
  *
  * This is an implementation of the algorithm described by Adriano Moreira and Maribel Yasmina Santos:
  * CONCAVE HULL: A K-NEAREST NEIGHBOURS APPROACH FOR THE COMPUTATION OF THE REGION OCCUPIED BY A SET OF POINTS.
@@ -57,43 +60,72 @@ public class ConcaveHull {
 
         @Override
         public int hashCode() {
-            // http://stackoverflow.com/questions/22826326/good-hashcode-function-for-2d-coordinates
-            // http://www.cs.upc.edu/~alvarez/calculabilitat/enumerabilitat.pdf
-            int tmp = (int) (y + ((x + 1) / 2));
-            return Math.abs((int) (x + (tmp * tmp)));
+            final int yHash = y.hashCode();
+            final int xHash = x.hashCode();
+            return yHash ^ xHash;
         }
     }
+
+    public static class DistancedPoint {
+        private final double distance;
+        private final Point point;
+
+        public DistancedPoint(final Point p, final double distance) {
+            point = p;
+            this.distance = distance;
+        }
+
+        public Double getDistance() {
+            return distance;
+        }
+
+        public Point getPoint() {
+            return point;
+        }
+
+    }
+
 
     private Double euclideanDistance(Point a, Point b) {
         return Math.sqrt(Math.pow(a.getX() - b.getX(), 2) + Math.pow(a.getY() - b.getY(), 2));
     }
 
-    private ArrayList<Point> kNearestNeighbors(ArrayList<Point> l, Point q, Integer k) {
-        ArrayList<Pair<Double, Point>> nearestList = new ArrayList<>();
-        for (Point o : l) {
-            nearestList.add(new Pair<>(euclideanDistance(q, o), o));
-        }
-
-        Collections.sort(nearestList, new Comparator<Pair<Double, Point>>() {
+    private List<Point> kNearestNeighbors(List<Point> l, Point q, Integer k) {
+        TreeSet<DistancedPoint> distanced = new TreeSet<DistancedPoint>(new Comparator<DistancedPoint>() {
             @Override
-            public int compare(Pair<Double, Point> o1, Pair<Double, Point> o2) {
-                return o1.getKey().compareTo(o2.getKey());
+            public int compare(DistancedPoint o1, DistancedPoint o2) {
+                if (o1.getDistance().equals(o2.getDistance())) {
+                    if (o1.getPoint().getY().equals(o2.getPoint().getY())) {
+                        return o2.getPoint().getX().compareTo(o1.getPoint().getX());
+                    }
+                    return o1.getPoint().getY().compareTo(o2.getPoint().getY());
+                }
+                return o1.getDistance().compareTo(o2.getDistance());
             }
         });
-
-        ArrayList<Point> result = new ArrayList<>();
-
-        for (int i = 0; i < Math.min(k, nearestList.size()); i++) {
-            result.add(nearestList.get(i).getValue());
+        for (Point p : l) {
+            distanced.add(new DistancedPoint(p, euclideanDistance(q, p)));
         }
 
+        List<Point> result = new ArrayList<>();
+        for (DistancedPoint value : distanced) {
+            result.add(value.getPoint());
+        }
         return result;
     }
 
-    private Point findMinYPoint(ArrayList<Point> l) {
+    private Point findMinYPoint(List<Point> l) {
         Collections.sort(l, new Comparator<Point>() {
             @Override
             public int compare(Point o1, Point o2) {
+                if (o1.getY().equals(o2.getY())) {
+                    if (o1.getX().equals(o2.getX())) {
+                        //a tie should be impossible if we deduplicate the set
+                    } else {
+                        //break Y ties in X, following the "wrapping" direction
+                        return o2.getX().compareTo(o1.getX());
+                    }
+                }
                 return o1.getY().compareTo(o2.getY());
             }
         });
@@ -123,7 +155,7 @@ public class ConcaveHull {
         }
     }
 
-    private ArrayList<Point> sortByAngle(ArrayList<Point> l, Point q, Double a) {
+    private List<Point> sortByAngle(List<Point> l, Point q, Double a) {
         // Sort by angle descending
         Collections.sort(l, new Comparator<Point>() {
             @Override
@@ -168,7 +200,7 @@ public class ConcaveHull {
         return true;
     }
 
-    private boolean pointInPolygon(Point p, ArrayList<Point> pp) {
+    private boolean pointInPolygon(Point p, List<Point> pp) {
         boolean result = false;
         for (int i = 0, j = pp.size() - 1; i < pp.size(); j = i++) {
             if ((pp.get(i).getY() > p.getY()) != (pp.get(j).getY() > p.getY()) &&
@@ -183,14 +215,14 @@ public class ConcaveHull {
 
     }
 
-    public ArrayList<Point> calculateConcaveHull(ArrayList<Point> pointArrayList, Integer k) {
+    public List<Point> calculateConcaveHull(List<Point> pointArrayList, Integer k) {
 
         // the resulting concave hull
-        ArrayList<Point> concaveHull = new ArrayList<>();
+        List<Point> concaveHull = new ArrayList<>();
 
         // optional remove duplicates
         HashSet<Point> set = new HashSet<>(pointArrayList);
-        ArrayList<Point> pointArraySet = new ArrayList<>(set);
+        List<Point> pointArraySet = new ArrayList<>(set);
 
         // k has to be greater than 3 to execute the algorithm
         Integer kk = Math.max(k, 3);
@@ -220,10 +252,10 @@ public class ConcaveHull {
             }
 
             // get k nearest neighbors of current point
-            ArrayList<Point> kNearestPoints = kNearestNeighbors(pointArraySet, currentPoint, kk);
+            List<Point> kNearestPoints = kNearestNeighbors(pointArraySet, currentPoint, kk);
 
             // sort points by angle clockwise
-            ArrayList<Point> clockwisePoints = sortByAngle(kNearestPoints, currentPoint, previousAngle);
+            List<Point> clockwisePoints = sortByAngle(kNearestPoints, currentPoint, previousAngle);
 
             // check if clockwise angle nearest neighbors are candidates for concave hull
             Boolean its = true;
@@ -247,6 +279,10 @@ public class ConcaveHull {
 
             // if there is no candidate increase k - try again
             if (its) {
+                // unless we've exhausted the points
+                if (kk >= (pointArrayList.size() - 1)) {
+                    return null;
+                }
                 return calculateConcaveHull(pointArrayList, k + 1);
             }
 
@@ -267,6 +303,9 @@ public class ConcaveHull {
         int i = pointArraySet.size() - 1;
 
         while (insideCheck && i > 0) {
+            if (kk >= (pointArrayList.size() - 1)) {
+                return null;
+            }
             insideCheck = pointInPolygon(pointArraySet.get(i), concaveHull);
             i--;
         }
